@@ -1,7 +1,7 @@
 {
   "id": "openapi-renderer",
   "name": "OpenAPI Renderer",
-  "version": "4.5.2",
+  "version": "4.5.3",
   "minAppVersion": "1.6.5",
   "author": "Sentiago",
   "authorUrl": "https://github.com/Ssentiago",

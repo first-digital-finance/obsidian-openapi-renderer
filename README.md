@@ -11,6 +11,14 @@
 >   colour those code blocks inherit from their `<pre class="microlight">`. The result: JSON keys
 >   and all bare punctuation (`{ } : ,`) render at roughly `rgb(92,92,92)` on `#333`. Fixed with
 >   two scoped rules in `styles.css` (see the comment there for the full diagnosis).
+> - **Text is unreadable wherever the preview's theme differs from Obsidian's.** The preview is
+>   not an iframe, so `app.css`, the active theme and any CSS snippet all cascade into the Swagger
+>   tree. Obsidian in light mode with a dark preview paints near-black onto dark backgrounds:
+>   bold text, `<input>` values (server variables such as `Port` and `basePath`), placeholders and
+>   headings. A handful of Swagger's own light-theme colours that `swagger-ui-dark.css` never
+>   overrides are fixed too - `#9012fe` inline code, `#000` code blocks, white-on-pastel method
+>   badges, the version stamps and the Execute button. Verified with a headless-Chromium contrast
+>   harness across eight theme/mode combinations; see [`tools/contrast-audit`](tools/contrast-audit).
 >
 > Everything else is unchanged from upstream. All credit for the plugin goes to
 > [@Ssentiago](https://github.com/Ssentiago); it is Apache-2.0 licensed.

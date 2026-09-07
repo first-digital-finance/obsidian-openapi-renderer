@@ -1,0 +1,242 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Obsidian's real load order: core app.css, then the theme, then the plugin's styles.css in <head> -->
+<link rel="stylesheet" href="app.css">
+<!--THEME-->
+<link rel="stylesheet" href="plugin-styles.css">
+<style>html,body{margin:0}#host{padding:0}</style>
+</head>
+<body class="__BODYCLASS__">
+<div id="host" class="workspace-leaf-content">
+  <!-- the plugin injects base + mode CSS as a <style> INSIDE the view, so it lands after <head> -->
+  <style id="injected"></style>
+  <div id="render" class="fill-height-or-more"></div>
+</div>
+<pre id="report" style="display:none"></pre>
+<script src="swagger-ui-bundle.js"></script>
+<script>
+const MODE = "__MODE__";
+
+function parseRGB(s){
+  const m = String(s).match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(',').map(x => parseFloat(x));
+  return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+}
+function lum({r,g,b}){
+  const f = v => { v /= 255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+  return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b);
+}
+function ratio(a,b){
+  const l1 = lum(a), l2 = lum(b);
+  return (Math.max(l1,l2) + 0.05) / (Math.min(l1,l2) + 0.05);
+}
+function over(fg,bg){
+  const a = fg.a;
+  return { r: fg.r*a + bg.r*(1-a), g: fg.g*a + bg.g*(1-a), b: fg.b*a + bg.b*(1-a), a: 1 };
+}
+function effectiveBg(el){
+  const layers = [];
+  let node = el;
+  while (node && node.nodeType === 1) {
+    const c = parseRGB(getComputedStyle(node).backgroundColor);
+    if (c && c.a > 0) { layers.push(c); if (c.a === 1) break; }
+    node = node.parentElement;
+  }
+  let base = { r:255, g:255, b:255, a:1 };
+  if (layers.length && layers[layers.length-1].a === 1) base = layers.pop();
+  for (let i = layers.length-1; i >= 0; i--) base = over(layers[i], base);
+  return base;
+}
+function fmt(c){ return `rgb(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)})`; }
+function pathOf(el){
+  const parts = [];
+  let n = el;
+  for (let i = 0; n && n.nodeType === 1 && i < 5; i++, n = n.parentElement) {
+    let p = n.tagName.toLowerCase();
+    const cls = (n.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).slice(0,3);
+    if (cls.length) p += '.' + cls.join('.');
+    parts.unshift(p);
+    if (n.id === 'render') break;
+  }
+  return parts.join(' > ');
+}
+function visible(el){
+  if (el.getClientRects().length === 0) return false;
+  const cs = getComputedStyle(el);
+  return cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05;
+}
+function ownText(el){
+  let t = '';
+  for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+  return t.trim();
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitFor(fn, tries = 200){
+  for (let i = 0; i < tries; i++) { if (fn()) return true; await sleep(50); }
+  return false;
+}
+function clickAll(sel){
+  let n = 0;
+  document.querySelectorAll(sel).forEach(el => { try { el.click(); n++; } catch(e){} });
+  return n;
+}
+
+function audit(){
+  const rows = [];
+  document.querySelectorAll('#host *').forEach(el => {
+    const tag = el.tagName.toLowerCase();
+    if (['script','style','link','svg','path','br','hr','defs','g','use'].includes(tag)) return;
+    if (!visible(el)) return;
+
+    const isControl = ['input','select','textarea','option','button'].includes(tag);
+    const text = ownText(el);
+    const value = isControl ? String(el.value || '') : '';
+    const placeholder = (el.getAttribute && el.getAttribute('placeholder')) || '';
+    const sample = text || value || placeholder;
+    if (!sample) return;
+
+    const cs = getComputedStyle(el);
+    const fgRaw = parseRGB(cs.color);
+    if (!fgRaw) return;
+    const bg = effectiveBg(el);
+    const fg = fgRaw.a < 1 ? over(fgRaw, bg) : fgRaw;
+    const r = ratio(fg, bg);
+
+    const size = parseFloat(cs.fontSize) || 14;
+    const weight = parseInt(cs.fontWeight, 10) || 400;
+    const large = size >= 24 || (size >= 18.66 && weight >= 700);
+    const need = large ? 3.0 : 4.5;
+
+    rows.push({
+      ratio: Math.round(r*100)/100, need, pass: r >= need,
+      tag, cls: (el.getAttribute('class') || ''),
+      fg: fmt(fg), bg: fmt(bg), size, weight,
+      kind: text ? 'text' : (value ? 'value' : 'placeholder'),
+      sample: sample.replace(/\s+/g,' ').slice(0,48),
+      path: pathOf(el),
+      why: (r < need) ? colorRulesFor(el) : undefined
+    });
+  });
+  return rows;
+}
+
+function specificity(sel){
+  // good-enough (id, class-ish, type) counter
+  const s2 = sel.replace(/\[[^\]]*\]/g, '~ATTR~').replace(/::?[a-z-]+(\([^)]*\))?/g, m => m.startsWith('::') ? '~EL~' : '~CLS~');
+  const ids = (s2.match(/#[\w-]+/g) || []).length;
+  const cls = (s2.match(/\.[\w-]+/g) || []).length + (s2.match(/~ATTR~/g) || []).length + (s2.match(/~CLS~/g) || []).length;
+  const typ = (s2.match(/(^|[\s>+~])[a-z][\w-]*/gi) || []).length + (s2.match(/~EL~/g) || []).length;
+  return ids * 10000 + cls * 100 + typ;
+}
+function colorRulesFor(el){
+  const hits = [];
+  let order = 0;
+  for (const sheet of document.styleSheets) {
+    let rules;
+    try { rules = sheet.cssRules; } catch (e) { continue; }
+    const origin = sheet.href ? sheet.href.split('/').pop() : (sheet.ownerNode && sheet.ownerNode.id) || 'inline';
+    const walk = list => {
+      for (const rule of list) {
+        if (rule.cssRules) { walk(rule.cssRules); continue; }
+        if (!rule.selectorText || !rule.style) continue;
+        const col = rule.style.getPropertyValue('color');
+        if (!col) continue;
+        order++;
+        for (const sel of rule.selectorText.split(',')) {
+          const one = sel.trim();
+          let m = false;
+          try { m = el.matches(one); } catch (e) { continue; }
+          if (!m) continue;
+          hits.push({
+            origin, sel: one, color: col.trim(),
+            important: rule.style.getPropertyPriority('color') === 'important',
+            spec: specificity(one), order
+          });
+        }
+      }
+    };
+    walk(rules);
+  }
+  hits.sort((a,b) => (a.important - b.important) || (a.spec - b.spec) || (a.order - b.order));
+  return hits.slice(-4).reverse();
+}
+
+function mergeInto(store, rows){
+  for (const r of rows) {
+    const key = [r.tag, r.cls, r.fg, r.bg, r.sample].join('|');
+    if (!store.has(key) || store.get(key).ratio > r.ratio) store.set(key, r);
+  }
+}
+
+function fail(where, e){
+  document.getElementById('report').textContent =
+    JSON.stringify({ error: String((e && e.stack) || e), where });
+  document.title = 'AUDIT-ERROR';
+}
+window.addEventListener('error', ev => fail('window.onerror', ev.error || ev.message));
+window.addEventListener('unhandledrejection', ev => fail('unhandledrejection', ev.reason));
+
+(async () => { try {
+  const inj = document.getElementById('injected');
+  const base = await (await fetch('swagger-ui-base.css')).text();
+  const mode = await (await fetch(MODE === 'dark' ? 'swagger-ui-dark.css' : 'swagger-ui-light.css')).text();
+  inj.textContent = base + "\n" + mode;
+
+  const spec = await (await fetch('spec.json')).json();
+  window.ui = SwaggerUIBundle({
+    spec,
+    domNode: document.getElementById('render'),
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+    layout: 'BaseLayout',
+    docExpansion: 'full',
+    defaultModelsExpandDepth: 8,
+    defaultModelExpandDepth: 8,
+    tryItOutEnabled: true,
+    displayRequestDuration: true,
+    showExtensions: true,
+    showCommonExtensions: true,
+    deepLinking: false
+  });
+
+  const ok = await waitFor(() => document.querySelector('.opblock-body') && document.querySelector('.models'));
+  await sleep(800);
+
+  const log = {};
+  const auth = document.querySelector('button.authorize, .auth-wrapper .authorize');
+  if (auth) { auth.click(); log.authOpened = 1; }
+  await sleep(600);
+  log.authInputs = document.querySelectorAll('.auth-container input, .auth-container select').length;
+
+  const store = new Map();
+  mergeInto(store, audit());                                           // pass A: everything open
+
+  log.tabsClicked = clickAll('.tab-item:last-child button, .tab li:last-child button');
+  await sleep(600);
+  mergeInto(store, audit());                                           // pass B: Schema tabs
+
+  log.modelsToggled = clickAll('.model-box-control, .model-toggle');
+  await sleep(600);
+  mergeInto(store, audit());                                           // pass C: models toggled
+
+  const rows = [...store.values()];
+  const diag = {
+    hostElements: document.querySelectorAll('#host *').length,
+    opblocks: document.querySelectorAll('.opblock').length,
+    opblockBodies: document.querySelectorAll('.opblock-body').length,
+    inputs: document.querySelectorAll('#host input').length,
+    selects: document.querySelectorAll('#host select').length,
+    options: document.querySelectorAll('#host option').length,
+    textareas: document.querySelectorAll('#host textarea').length,
+    strongs: document.querySelectorAll('#host strong, #host b').length,
+    markdown: document.querySelectorAll('#host .renderedMarkdown').length,
+    models: document.querySelectorAll('#host .model-box').length,
+    serverSelects: document.querySelectorAll('#host .servers select').length
+  };
+  document.getElementById('report').textContent =
+    JSON.stringify({ mode: MODE, rendered: ok, expanded: log, diag, total: rows.length, rows });
+  document.title = 'AUDIT-DONE';
+} catch (e) { fail('main', e); } })();
+</script>
+</body></html>

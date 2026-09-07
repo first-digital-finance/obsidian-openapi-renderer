@@ -1,0 +1,134 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Contrast Audit API",
+    "version": "1.0.0",
+    "description": "Top-level description with **Business rejection** in bold, *italic*, `inline code`, a [link](https://example.com) and a list:\n\n- **Bold item** one\n- plain item two\n\n| Column | Meaning |\n| --- | --- |\n| **A** | bold cell |\n| b | plain cell |\n",
+    "termsOfService": "https://example.com/tos",
+    "contact": { "name": "API Team", "email": "api@example.com", "url": "https://example.com" },
+    "license": { "name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0.html" }
+  },
+  "externalDocs": { "description": "Find out more about **this API**", "url": "https://example.com/docs" },
+  "servers": [
+    {
+      "url": "{scheme}://{host}:{Port}{basePath}",
+      "description": "Configurable server with **variables**",
+      "variables": {
+        "scheme": { "enum": ["https", "http"], "default": "https", "description": "Protocol **scheme**" },
+        "host": { "default": "api.example.com", "description": "Hostname, free text" },
+        "Port": { "enum": ["443", "8443", "8080"], "default": "443", "description": "TCP **Port**" },
+        "basePath": { "enum": ["/v1", "/v2", "/beta"], "default": "/v1", "description": "API **basePath**" }
+      }
+    },
+    { "url": "https://staging.example.com/v1", "description": "Staging, no variables" }
+  ],
+  "security": [{ "ApiKeyAuth": [] }],
+  "tags": [
+    { "name": "loans", "description": "Loan operations, including **Business rejection** handling", "externalDocs": { "description": "More", "url": "https://example.com/loans" } },
+    { "name": "admin", "description": "Administrative endpoints" }
+  ],
+  "paths": {
+    "/loans/{loanId}": {
+      "parameters": [
+        { "name": "loanId", "in": "path", "required": true, "description": "The **loan** identifier", "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "tags": ["loans"],
+        "summary": "Fetch a loan",
+        "operationId": "getLoan",
+        "description": "Returns a loan. A **Business rejection** is reported in `status`.",
+        "parameters": [
+          { "name": "expand", "in": "query", "description": "Fields to **expand**", "required": false, "schema": { "type": "array", "items": { "type": "string", "enum": ["borrower", "schedule", "fees"] } }, "style": "form", "explode": false },
+          { "name": "status", "in": "query", "description": "Filter by status", "schema": { "type": "string", "enum": ["approved", "pending", "business_rejection"], "default": "pending" } },
+          { "name": "limit", "in": "query", "description": "Max rows", "schema": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "X-Request-Id", "in": "header", "description": "Correlation id", "schema": { "type": "string" } },
+          { "name": "session", "in": "cookie", "description": "Session cookie", "schema": { "type": "string" } },
+          { "name": "dryRun", "in": "query", "description": "Boolean toggle", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK — includes **bold** text",
+            "headers": { "X-Rate-Limit": { "description": "Calls **remaining**", "schema": { "type": "integer" } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Loan" }, "example": { "id": "9f1c", "status": "business_rejection", "amount": 1500.5, "active": true, "tags": ["a", "b"], "meta": null } } },
+            "links": { "borrower": { "operationId": "getLoan", "description": "The **borrower**" } }
+          },
+          "400": { "description": "Bad request — **validation** failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Not found" },
+          "500": { "description": "Server error" }
+        }
+      },
+      "put": {
+        "tags": ["loans"],
+        "summary": "Replace a loan",
+        "operationId": "putLoan",
+        "requestBody": { "required": true, "description": "The **replacement** loan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Loan" } } } },
+        "responses": { "200": { "description": "Replaced" } }
+      },
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete a loan",
+        "operationId": "deleteLoan",
+        "deprecated": true,
+        "responses": { "204": { "description": "Gone" } }
+      },
+      "patch": {
+        "tags": ["loans"],
+        "summary": "Patch a loan",
+        "operationId": "patchLoan",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "Patched" } }
+      }
+    },
+    "/loans": {
+      "post": {
+        "tags": ["loans"],
+        "summary": "Create a loan",
+        "operationId": "createLoan",
+        "description": "Create a loan.\n\n> Blockquote with **bold**\n\n```json\n{ \"amount\": 100 }\n```\n",
+        "security": [{ "BearerAuth": [] }, { "OAuth2": ["loans:write"] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Loan" } },
+            "application/x-www-form-urlencoded": { "schema": { "type": "object", "properties": { "amount": { "type": "number" }, "currency": { "type": "string", "enum": ["PHP", "USD"] } }, "required": ["amount"] } },
+            "multipart/form-data": { "schema": { "type": "object", "properties": { "document": { "type": "string", "format": "binary" }, "note": { "type": "string", "description": "A **note**" } } } }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "422": { "description": "Unprocessable" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key", "description": "Send your **API key**" },
+      "BasicAuth": { "type": "http", "scheme": "basic", "description": "HTTP **basic**" },
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "A **JWT**" },
+      "OAuth2": { "type": "oauth2", "description": "OAuth **flows**", "flows": { "authorizationCode": { "authorizationUrl": "https://example.com/oauth/authorize", "tokenUrl": "https://example.com/oauth/token", "refreshUrl": "https://example.com/oauth/refresh", "scopes": { "loans:read": "Read **loans**", "loans:write": "Write loans" } }, "clientCredentials": { "tokenUrl": "https://example.com/oauth/token", "scopes": { "admin": "Admin" } } } }
+    },
+    "schemas": {
+      "Loan": {
+        "type": "object",
+        "description": "A loan. Note the **Business rejection** status.",
+        "required": ["id", "status", "amount"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "readOnly": true, "description": "Server-assigned **id**" },
+          "status": { "type": "string", "enum": ["approved", "pending", "business_rejection"], "description": "Current **status**" },
+          "amount": { "type": "number", "format": "double", "minimum": 0, "example": 1500.5 },
+          "currency": { "type": "string", "default": "PHP", "deprecated": true },
+          "active": { "type": "boolean" },
+          "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+          "meta": { "type": "object", "nullable": true, "additionalProperties": { "type": "string" } },
+          "borrower": { "$ref": "#/components/schemas/Borrower" },
+          "payout": { "oneOf": [{ "$ref": "#/components/schemas/Bank" }, { "$ref": "#/components/schemas/Wallet" }] },
+          "audit": { "allOf": [{ "$ref": "#/components/schemas/Borrower" }, { "type": "object", "properties": { "by": { "type": "string" } } }] },
+          "writeOnlySecret": { "type": "string", "writeOnly": true }
+        }
+      },
+      "Borrower": { "type": "object", "properties": { "name": { "type": "string" }, "age": { "type": "integer", "minimum": 18 } } },
+      "Bank": { "type": "object", "properties": { "iban": { "type": "string" } } },
+      "Wallet": { "type": "object", "properties": { "msisdn": { "type": "string" } } },
+      "Error": { "type": "object", "properties": { "code": { "type": "integer" }, "message": { "type": "string", "description": "Human readable, may mention **Business rejection**" } } }
+    }
+  }
+}
