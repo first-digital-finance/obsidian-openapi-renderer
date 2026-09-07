@@ -1,5 +1,21 @@
 # OpenAPI Renderer Plugin for Obsidian
 
+> **Fork note.** This is a fork of
+> [Ssentiago/obsidian-openapi-renderer](https://github.com/Ssentiago/obsidian-openapi-renderer)
+> maintained by [@sharavara](https://github.com/sharavara). It exists to carry one fix that is
+> not yet in upstream 4.5.1:
+>
+> - **JSON in the Swagger preview is unreadable (dark grey on dark grey).** Obsidian's core
+>   `app.css` ships an unscoped Prism rule, `code[class*="language-"] { color: var(--code-normal) }`,
+>   that matches Swagger UI's `<code class="language-json">` directly and overrides the white
+>   colour those code blocks inherit from their `<pre class="microlight">`. The result: JSON keys
+>   and all bare punctuation (`{ } : ,`) render at roughly `rgb(92,92,92)` on `#333`. Fixed with
+>   two scoped rules in `styles.css` (see the comment there for the full diagnosis).
+>
+> Everything else is unchanged from upstream. All credit for the plugin goes to
+> [@Ssentiago](https://github.com/Ssentiago); it is Apache-2.0 licensed.
+
+
 Integrate OpenAPI specification management into Obsidian with features for version control,
 visualization, editing, and easy navigation of API specs.
 
