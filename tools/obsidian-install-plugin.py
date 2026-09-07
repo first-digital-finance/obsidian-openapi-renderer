@@ -80,11 +80,32 @@ def discover_vaults() -> list[Path]:
 # fetching the plugin payload
 # --------------------------------------------------------------------------- #
 
-def http_get(url: str) -> bytes:
+def http_get(url: str, label: str | None = None) -> bytes:
+    """Fetch a URL. With a label, report progress - main.js is ~2.8 MB and the
+    wait is long enough to look like a hang if nothing is printed."""
     req = urllib.request.Request(url, headers=UA)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            return resp.read()
+            if label is None:
+                return resp.read()
+            total = int(resp.headers.get("Content-Length") or 0)
+            live = sys.stdout.isatty()
+            chunks: list[bytes] = []
+            got = 0
+            while True:
+                chunk = resp.read(64 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                got += len(chunk)
+                if live:
+                    of = f"/{total:,}" if total else ""
+                    pct = f" ({got * 100 // total}%)" if total else ""
+                    print(f"\r  {label}: {got:,}{of} bytes{pct}   ", end="", flush=True)
+            if live:
+                print("\r" + " " * 64 + "\r", end="")
+            print(f"  {label}: {got:,} bytes", flush=True)
+            return b"".join(chunks)
     except urllib.error.HTTPError as exc:
         die(f"{url} returned HTTP {exc.code} {exc.reason}")
     except urllib.error.URLError as exc:
@@ -119,12 +140,13 @@ def files_from_github(repo: str, tag: str | None, manifest_only: bool = False) -
     note(f"  release {resolved}: {', '.join(sorted(assets)) or '(no assets)'}")
 
     if "manifest.json" in assets:
-        names = ("manifest.json",) if manifest_only else WANTED
-        return {n: http_get(assets[n]) for n in names if n in assets}
+        # smallest first: two instant lines before the multi-megabyte main.js
+        names = ("manifest.json",) if manifest_only else ("manifest.json", "styles.css", "main.js")
+        return {n: http_get(assets[n], label=n) for n in names if n in assets}
 
     zips = [n for n in assets if n.endswith(".zip")]
     if zips:
-        return files_from_zip(http_get(assets[zips[0]]))
+        return files_from_zip(http_get(assets[zips[0]], label=zips[0]))
 
     die(f"release {resolved} of {repo} has neither manifest.json nor a .zip asset")
 
@@ -144,7 +166,7 @@ def resolve_source(source: str, manifest_only: bool = False) -> dict[str, bytes]
     if source.startswith(("http://", "https://")):
         if not source.endswith(".zip"):
             die("a URL source must point at a .zip")
-        return files_from_zip(http_get(source))
+        return files_from_zip(http_get(source, label=Path(source).name))
 
     local = Path(source).expanduser()
     if local.is_dir():
