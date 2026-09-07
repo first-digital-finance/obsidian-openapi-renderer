@@ -15,6 +15,78 @@
 > Everything else is unchanged from upstream. All credit for the plugin goes to
 > [@Ssentiago](https://github.com/Ssentiago); it is Apache-2.0 licensed.
 
+## Installing this fork
+
+Three ways, pick per person.
+
+### 1. One command, every vault (no extra plugin)
+
+`tools/obsidian-install-plugin.py` finds your vaults in Obsidian's own registry, so nobody
+has to type paths. Python 3.9+, standard library only.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sharavara/obsidian-openapi-renderer/main/tools/obsidian-install-plugin.py \
+  | python3 - sharavara/obsidian-openapi-renderer --yes
+```
+
+Look before you leap - drop `--yes` for `--list` to see what it would touch:
+
+```sh
+curl -fsSL .../obsidian-install-plugin.py | python3 - sharavara/obsidian-openapi-renderer --list
+```
+
+```
+vault                                             installed   action
+---------------------------------------------------------------------------
+/Users/you/Notes                                      4.5.1   upgrade 4.5.1 -> 4.5.2
+/Users/you/work/api-docs                                  -   fresh install 4.5.2
+```
+
+Useful flags:
+
+| flag | effect |
+|---|---|
+| `--list` | show vaults and installed versions, change nothing (fetches only `manifest.json`) |
+| `--dry-run` | print every file it would write |
+| `--vault PATH` | target one vault; repeatable |
+| `--only-upgrade` | skip vaults that don't already have the plugin |
+| `--no-enable` | don't add the id to `community-plugins.json` |
+| `-y`, `--yes` | no confirmation prompt (required when piped, since stdin is the script) |
+
+It works for **any** Obsidian plugin, not just this one, and takes any of:
+
+```sh
+obsidian-install-plugin.py owner/repo              # latest release
+obsidian-install-plugin.py owner/repo@4.5.2        # a specific tag
+obsidian-install-plugin.py https://host/thing.zip  # zip URL
+obsidian-install-plugin.py ./thing.zip             # local zip
+obsidian-install-plugin.py ./build-dir             # local directory
+```
+
+Your settings are safe: it writes only `main.js`, `manifest.json` and `styles.css`, atomically,
+and never deletes the plugin folder - so `data.json` survives every upgrade.
+
+### 2. BRAT, with a clickable link
+
+Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) once from the community store, then
+open this link in a browser - it hands the repo straight to BRAT's "Add beta plugin" dialog:
+
+```
+obsidian://brat?plugin=sharavara/obsidian-openapi-renderer
+```
+
+BRAT then keeps everyone on the latest release automatically. Best option if the fork will
+keep receiving fixes.
+
+### 3. Manual
+
+Download `main.js`, `manifest.json` and `styles.css` from the
+[latest release](https://github.com/sharavara/obsidian-openapi-renderer/releases/latest)
+into `<vault>/.obsidian/plugins/openapi-renderer/`, then reload Obsidian.
+
+After any of these: reload the vault (`Cmd`/`Ctrl`-`R`), or toggle the plugin off and on under
+**Settings -> Community plugins**.
+
 
 Integrate OpenAPI specification management into Obsidian with features for version control,
 visualization, editing, and easy navigation of API specs.
