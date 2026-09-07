@@ -1,103 +1,195 @@
-# OpenAPI Renderer Plugin for Obsidian
+# OpenAPI Renderer by FDFC
 
-> **Fork note.** This is a fork of
-> [Ssentiago/obsidian-openapi-renderer](https://github.com/Ssentiago/obsidian-openapi-renderer)
-> maintained by [@sharavara](https://github.com/sharavara). It exists to carry one fix that is
-> not yet in upstream 4.5.1:
->
-> - **JSON in the Swagger preview is unreadable (dark grey on dark grey).** Obsidian's core
->   `app.css` ships an unscoped Prism rule, `code[class*="language-"] { color: var(--code-normal) }`,
->   that matches Swagger UI's `<code class="language-json">` directly and overrides the white
->   colour those code blocks inherit from their `<pre class="microlight">`. The result: JSON keys
->   and all bare punctuation (`{ } : ,`) render at roughly `rgb(92,92,92)` on `#333`. Fixed with
->   two scoped rules in `styles.css` (see the comment there for the full diagnosis).
-> - **Text is unreadable wherever the preview's theme differs from Obsidian's.** The preview is
->   not an iframe, so `app.css`, the active theme and any CSS snippet all cascade into the Swagger
->   tree. Obsidian in light mode with a dark preview paints near-black onto dark backgrounds:
->   bold text, `<input>` values (server variables such as `Port` and `basePath`), placeholders and
->   headings. A handful of Swagger's own light-theme colours that `swagger-ui-dark.css` never
->   overrides are fixed too - `#9012fe` inline code, `#000` code blocks, white-on-pastel method
->   badges, the version stamps and the Execute button. Verified with a headless-Chromium contrast
->   harness across eight theme/mode combinations; see [`tools/contrast-audit`](tools/contrast-audit).
->
-> Everything else is unchanged from upstream. All credit for the plugin goes to
-> [@Ssentiago](https://github.com/Ssentiago); it is Apache-2.0 licensed.
+Edit, preview and version OpenAPI specifications inside Obsidian, rendered with Swagger UI.
 
-## Installing this fork
+This is a fork of [**Ssentiago/obsidian-openapi-renderer**](https://github.com/Ssentiago/obsidian-openapi-renderer)
+maintained by [First Digital Finance](https://github.com/first-digital-finance). The plugin is
+[@Ssentiago](https://github.com/Ssentiago)'s work and all credit belongs to them; this fork exists
+only to carry rendering fixes, and it tracks upstream otherwise.
 
-Three ways, pick per person.
+---
 
-### 1. One command, every vault (no extra plugin)
+## Why this fork exists
 
-`tools/obsidian-install-plugin.py` finds your vaults in Obsidian's own registry, so nobody
-has to type paths. Python 3.9+, standard library only.
+We write our API documentation in Obsidian vaults, so the Swagger preview is something the team
+looks at every day. It had a class of bug that made it hard to read, and upstream has been quiet
+since its 4.5.1 release in November 2024. Rather than wait, we fixed it here.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/sharavara/obsidian-openapi-renderer/main/tools/obsidian-install-plugin.py \
-  | python3 - sharavara/obsidian-openapi-renderer --yes
+All of the problems share one root cause worth understanding, because it explains why they show up
+for some people and not others:
+
+> **The preview is not an iframe.** `render-controller.ts` injects Swagger UI's stylesheets as a
+> `<style>` element *inside the Obsidian view*, so the entire Swagger tree lives in Obsidian's own
+> document. Every unscoped colour rule in Obsidian's `app.css`, in your active theme, and in any CSS
+> snippet you have enabled cascades straight into it — and Swagger UI's stylesheets, written for a
+> standalone page, leak back out.
+
+That is invisible as long as the preview's theme matches Obsidian's. The moment they differ — which
+is the default, since the plugin ships `syncOpenAPIPreviewTheme: false` — Obsidian paints its
+light-mode near-black text onto Swagger's dark backgrounds.
+
+## What changed
+
+Everything below is contained in `styles.css`. No source file is modified, which is deliberate:
+rollup copies `styles.css` into `dist/` **verbatim** rather than bundling it into `main.js`, so
+these fixes need no rebuild and stay trivial to audit and to offer upstream.
+
+### Unreadable JSON in the preview (4.5.2)
+
+Obsidian's `app.css` ships an unscoped Prism rule:
+
+```css
+code[class*="language-"], pre[class*="language-"] { color: var(--code-normal); }
 ```
 
-Look before you leap - drop `--yes` for `--list` to see what it would touch:
+Swagger UI renders code blocks as `<pre class="microlight" style="color:white"><code
+class="language-json">`. Obsidian's rule matches that `<code>` **directly**, and a direct match beats
+the white colour merely *inherited* from the `<pre>`. Every token the `agate` highlighter does not
+colour inline — JSON keys and all bare punctuation `{ } : ,` — rendered dark grey on dark grey.
+
+### Unreadable text wherever the preview's theme differs from Obsidian's (4.5.3)
+
+Two independent groups of causes, both found by measurement rather than by reading selectors:
+
+| what was wrong | where it came from |
+| --- | --- |
+| **Bold text** invisible | `app.css`: `b, strong { color: var(--bold-color) }`. Obsidian sets that variable to `inherit`, but **themes give it a real colour** — Blue Topaz and Things both do. |
+| **Input values** invisible — server variables such as `Port` and `basePath` | `app.css` colours the whole `input[type=…]` family with `var(--text-normal)`. Server variables render as `<select>` when they declare an `enum` and `<input>` when they don't, so it hit the enum-less ones. |
+| **Placeholders** invisible | same, via `var(--text-faint)` |
+| **Headings** mistinted | themes colour `h1`–`h6` through their own `--h1..--h6-color` variables |
+| **Inline code** purple on dark | Swagger's *own* `#9012fe`, which `swagger-ui-dark.css` never overrides |
+| **Fenced code blocks** black on dark | Swagger's own `#000`, likewise never overridden |
+| **POST / PUT / PATCH badges** white on pastel (~2:1) | Swagger's own `#fff` over `#49cc90` / `#fca130` / `#50e3c2` |
+| **Version stamps**, **Execute button** | Swagger's own white-on-light-blue, 3.2:1 |
+
+The Obsidian-side fixes are all `color: inherit`, so the preview follows whichever theme it is
+actually displaying instead of hard-coding one. They are scoped through a doubled
+`.swagger-ui.swagger-ui` selector, which sets up the precedence we want:
+
+```
+Swagger's deliberate colours  >  our neutralisers  >  Obsidian and theme colours
+```
+
+`!important` is used exactly once, for bold, and the reason is documented in `styles.css`: Blue Topaz
+ships `:not(font)>strong { color: var(--accent-strong) !important }`, which no specificity can beat.
+It is safe to force because neither Swagger stylesheet sets a colour on `b`/`strong` at all.
+
+### Tooling
+
+- **[`tools/obsidian-install-plugin.py`](tools/obsidian-install-plugin.py)** — installs this or any
+  Obsidian plugin into every vault at once, discovered from Obsidian's own registry so nobody types
+  a path. Python 3 standard library only.
+- **[`tools/contrast-audit/`](tools/contrast-audit)** — the harness the fixes were verified with.
+
+## How this was verified
+
+Guessing at CSS selectors is how you end up with a `styles.css` full of speculative `!important`.
+Instead, `tools/contrast-audit` renders the real Swagger UI in headless Chrome with the exact
+stylesheet stack Obsidian produces — extracted `app.css`, the active theme, `styles.css`, then
+Swagger's own CSS injected in the view, in Obsidian's real load order — against a specification that
+deliberately exercises server variables, markdown in every description slot, all six parameter
+kinds, every auth scheme and nested schemas. It then walks every visible text node and computes its
+WCAG contrast ratio against the composited background.
+
+Failing elements out of ~405 measured, including a **stock Swagger UI control** so that Swagger's
+own shortcomings are not credited to Obsidian:
+
+| combination | stock Swagger UI | before | after |
+| --- | --- | --- | --- |
+| Obsidian dark + preview dark | 11 | 11 | **2** |
+| Obsidian light + preview dark | 11 | 16–42 | **2** |
+| Obsidian dark + preview light | 61 | 92 | **56** |
+| Obsidian light + preview light | 61 | 62 | **56** |
+
+Every dark-preview combination now measures identically regardless of theme or Obsidian mode, which
+was the actual goal: **the preview no longer depends on its host.** A before/after diff of every
+element confirmed nothing that passed previously fails now.
+
+## Known limitations
+
+- **Two elements in a dark preview** — numeric literals in JSON examples, at 3.45:1.
+  `react-syntax-highlighter` applies `agate` token colours as inline `style` attributes on unclassed
+  `<span>`s, so no stylesheet can reach them without an `!important` broad enough to flatten every
+  other token colour. Left alone deliberately.
+- **56 in a light preview** — Swagger UI's own stock palette: muted `.prop-type` / `.property`
+  greys, white-on-pastel GET and deprecated badges, the `#ff6060` Cancel button. Stock Swagger UI
+  measures 61 in the same test, so this fork is marginally better than upstream Swagger rather than
+  worse. Fixing them means restyling Swagger's light theme, which is a larger and more opinionated
+  change than fixing leaks.
+- **Opening a preview tints the whole Obsidian window.** Both Swagger theme files carry unscoped
+  `html { background: … !important }` and `body { … }` rules. Those live in a bundled asset rather
+  than in `styles.css`, so fixing them properly requires a rebuild.
+- **Updating the bundled Swagger theme would not help.** We checked: the latest `swagger-themes`
+  (1.4.3) differs from the bundled copy by exactly one selector, and the change *adds*
+  `overflow-y: scroll` to that same unscoped `html` rule.
+
+## Install
+
+The plugin id is unchanged (`openapi-renderer`), so this installs as an in-place upgrade over the
+community-store build and keeps your existing settings in `data.json`.
+
+### One command, every vault
 
 ```sh
-curl -fsSL .../obsidian-install-plugin.py | python3 - sharavara/obsidian-openapi-renderer --list
+curl -fsSL https://raw.githubusercontent.com/first-digital-finance/obsidian-openapi-renderer/main/tools/obsidian-install-plugin.py \
+  | python3 - first-digital-finance/obsidian-openapi-renderer --yes
 ```
+
+Swap `--yes` for `--list` first to see what it would touch, or add `--only-upgrade` to skip vaults
+that don't already have the plugin:
 
 ```
 vault                                             installed   action
 ---------------------------------------------------------------------------
-/Users/you/Notes                                      4.5.1   upgrade 4.5.1 -> 4.5.2
-/Users/you/work/api-docs                                  -   fresh install 4.5.2
+/Users/you/Notes                                      4.5.1   upgrade 4.5.1 -> 4.5.4
+/Users/you/work/api-docs                                  -   fresh install 4.5.4
 ```
 
-Useful flags:
-
 | flag | effect |
-|---|---|
-| `--list` | show vaults and installed versions, change nothing (fetches only `manifest.json`) |
+| --- | --- |
+| `--list` | show vaults and versions, change nothing |
 | `--dry-run` | print every file it would write |
 | `--vault PATH` | target one vault; repeatable |
 | `--only-upgrade` | skip vaults that don't already have the plugin |
 | `--no-enable` | don't add the id to `community-plugins.json` |
 | `-y`, `--yes` | no confirmation prompt (required when piped, since stdin is the script) |
 
-It works for **any** Obsidian plugin, not just this one, and takes any of:
+It writes only `main.js`, `manifest.json` and `styles.css`, atomically, and never deletes the plugin
+folder — so `data.json` survives every upgrade.
 
-```sh
-obsidian-install-plugin.py owner/repo              # latest release
-obsidian-install-plugin.py owner/repo@4.5.2        # a specific tag
-obsidian-install-plugin.py https://host/thing.zip  # zip URL
-obsidian-install-plugin.py ./thing.zip             # local zip
-obsidian-install-plugin.py ./build-dir             # local directory
-```
+### BRAT, with a clickable link
 
-Your settings are safe: it writes only `main.js`, `manifest.json` and `styles.css`, atomically,
-and never deletes the plugin folder - so `data.json` survives every upgrade.
-
-### 2. BRAT, with a clickable link
-
-Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) once from the community store, then
-open this link in a browser - it hands the repo straight to BRAT's "Add beta plugin" dialog:
+Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) once from the community store, then open:
 
 ```
-obsidian://brat?plugin=sharavara/obsidian-openapi-renderer
+obsidian://brat?plugin=first-digital-finance/obsidian-openapi-renderer
 ```
 
-BRAT then keeps everyone on the latest release automatically. Best option if the fork will
-keep receiving fixes.
+BRAT keeps everyone on the latest release automatically. This is the best option for teammates,
+because the other two routes go stale silently.
 
-### 3. Manual
+### Manual
 
 Download `main.js`, `manifest.json` and `styles.css` from the
-[latest release](https://github.com/sharavara/obsidian-openapi-renderer/releases/latest)
-into `<vault>/.obsidian/plugins/openapi-renderer/`, then reload Obsidian.
+[latest release](https://github.com/first-digital-finance/obsidian-openapi-renderer/releases/latest)
+into `<vault>/.obsidian/plugins/openapi-renderer/`.
 
-After any of these: reload the vault (`Cmd`/`Ctrl`-`R`), or toggle the plugin off and on under
-**Settings -> Community plugins**.
+After any of these, reload the vault (`Cmd`/`Ctrl`-`R`) or toggle the plugin off and on.
 
+## Relationship to upstream
 
-Integrate OpenAPI specification management into Obsidian with features for version control,
-visualization, editing, and easy navigation of API specs.
+This fork tracks [Ssentiago/obsidian-openapi-renderer](https://github.com/Ssentiago/obsidian-openapi-renderer)
+and carries no feature changes — only the rendering fixes above, plus the two tools. The branch
+`fix/json-preview-contrast` holds the first fix as a standalone commit against upstream, ready to
+offer as a pull request.
+
+Licensed Apache-2.0, as upstream is. If upstream picks these fixes up, this fork should stop
+existing.
+
+---
+
+*Everything below this line is the original project documentation, by
+[@Ssentiago](https://github.com/Ssentiago).*
 
 ## Why? 
 I once wrote documentation for my small project directly in Obsidian while working on the 
@@ -114,19 +206,6 @@ suggestions for improvement, feel free to leave any issues here!
 - Manage specification versions: create, view, restore, and delete
 - Access all tracked OpenAPI specifications in your vault through a single user-friendly view 
   interface
-
-## Installation
-
-1. Manual:
-    1. Download the last release assets and copy them into your `.
-    obsidian/plugins/openapi-renderer` 
-       directory
-       (create it if it doesn’t exist)
-    2. Enable the plugin in Obsidian settings (Settings → Community plugins).
-2. Via the Community plugins Browser:
-    1. Go to `Settings` -> `Community plugins`, click on `Browse` button and search for 
-       `OpenAPI Renderer`. Install it
-    2. Enable the plugin in Obsidian settings (Settings → Community plugins).
 
 ## What this plugin can do?
 
@@ -244,7 +323,9 @@ Special thanks to [mnaoumov](https://github.com/mnaoumov/) for valuable insights
 
 ## Reporting Issues
 
-If you encounter any bugs or unexpected behavior, please [open an issue on GitHub](https://github.com/ssentiago/openapi-renderer/issues). If you want to offer a new feature, feel free to suggest.
-
-Your involvement makes the plugin better for everyone.
+- **Rendering, contrast or theming problems** — these are most likely ours:
+  [open an issue on this fork](https://github.com/first-digital-finance/obsidian-openapi-renderer/issues).
+- **Anything about the plugin's actual features** — editing, versioning, the entry view, $ref
+  resolution: [upstream](https://github.com/Ssentiago/obsidian-openapi-renderer/issues) is the right
+  place, and a fix there benefits everyone rather than just us.
 

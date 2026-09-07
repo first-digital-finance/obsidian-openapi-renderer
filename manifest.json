@@ -1,10 +1,10 @@
 {
   "id": "openapi-renderer",
-  "name": "OpenAPI Renderer",
-  "version": "4.5.3",
+  "name": "OpenAPI Renderer by FDFC",
+  "version": "4.5.4",
   "minAppVersion": "1.6.5",
-  "author": "Sentiago",
-  "authorUrl": "https://github.com/Ssentiago",
+  "author": "Sentiago (fork maintained by First Digital Finance)",
+  "authorUrl": "https://github.com/first-digital-finance/obsidian-openapi-renderer",
   "description": "Integrate OpenAPI specification management with features for version control, visualization, editing, and easy navigation of API specs.",
   "isDesktopOnly": true
 }

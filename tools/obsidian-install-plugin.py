@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install an Obsidian plugin into one or more vaults, from a GitHub repo or a zip.
 
-    obsidian-install-plugin.py sharavara/obsidian-openapi-renderer --yes
+    obsidian-install-plugin.py first-digital-finance/obsidian-openapi-renderer --yes
 
 Works with any plugin that publishes main.js / manifest.json (/ styles.css) as
 GitHub release assets, or ships a zip of those files. Stdlib only - no pip, no jq.
@@ -238,7 +238,7 @@ def install(vault: Path, plugin_id: str, files: dict[str, bytes], dry_run: bool)
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Install an Obsidian plugin into one or more vaults.",
-        epilog="example: %(prog)s sharavara/obsidian-openapi-renderer --yes",
+        epilog="example: %(prog)s first-digital-finance/obsidian-openapi-renderer --yes",
     )
     ap.add_argument("source", nargs="?", help="owner/repo[@tag], zip URL, local zip, or directory")
     ap.add_argument("--vault", action="append", metavar="PATH", default=[],
