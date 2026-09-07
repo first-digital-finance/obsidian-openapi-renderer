@@ -132,3 +132,36 @@
 .openapi-renderer-settings .invalid {
     border: 2px solid red !important;
 }
+
+/* ------------------------------------------------------------------
+ * Fix: unreadable JSON in the Swagger preview.
+ *
+ * Obsidian's app.css ships an *unscoped* Prism rule:
+ *
+ *     code[class*="language-"], pre[class*="language-"] {
+ *         color: var(--code-normal);   ->  --text-muted  ->  --color-base-70
+ *     }
+ *
+ * Swagger UI renders code blocks (react-syntax-highlighter, `agate` theme) as
+ *
+ *     <pre class="microlight" style="background:#333;color:white">
+ *         <code class="language-json">...</code>
+ *     </pre>
+ *
+ * Obsidian's rule matches that <code> *directly*, and a direct match beats the
+ * white colour merely *inherited* from <pre>. So every token that agate does
+ * not colour inline - JSON keys (.hljs-attr, which agate never defines) and all
+ * bare punctuation { } : , - renders at ~rgb(92,92,92) on a #333 background.
+ * Strings and numbers survive only because agate sets those colours itself.
+ *
+ * Specificity here (0,3,1) already beats Obsidian's (0,1,1); the !important is
+ * belt-and-braces against themes that add their own !important Prism rules.
+ * ------------------------------------------------------------------ */
+
+.swagger-ui .microlight code[class*='language-'] {
+    color: inherit !important;
+}
+
+.swagger-ui .microlight .hljs-attr {
+    color: #d1d9e6 !important;
+}
